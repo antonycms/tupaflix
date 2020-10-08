@@ -3,8 +3,9 @@ import knex from "../database/connection";
 
 class SuggestionController {
   async index(req: Request, res: Response) {
-
-    const suggestions = await knex("movie_suggestion").select("*");
+    const suggestions = await knex("movie_suggestion")
+      .select("*")
+      .where("watched", 0);
 
     const genres = await knex("genres").join(
       "suggestion_genres",
@@ -12,15 +13,24 @@ class SuggestionController {
       "=",
       "suggestion_genres.genre_id"
     );
-    
-    const serializedSuggestions = suggestions.map(suggestion => {
-      const s_genres = genres.filter(genre => genre.suggestion_id === suggestion.id);
-      suggestion.s_genres = s_genres;
-      
-      return suggestion;
-    })
 
-    res.json({ serializedSuggestions });
+    suggestions.map((suggestion) => {
+      const s_genres = genres.filter(
+        (genre) => genre.suggestion_id === suggestion.id
+      );
+      suggestion.s_genres = s_genres;
+
+      return suggestion;
+    });
+
+    const serializedFinal = suggestions.map((suggestion) => {
+      return {
+        ...suggestion,
+        image_url: `http://localhost:3333/uploads/${suggestion.image}`,
+      };
+    });
+
+    res.json({ serializedFinal });
   }
 
   async create(req: Request, res: Response) {
@@ -29,7 +39,7 @@ class SuggestionController {
     const trx = await knex.transaction();
 
     const suggestion = {
-      image: "image-fake",
+      image: req.file.filename,
       name,
       description,
     };
@@ -38,12 +48,15 @@ class SuggestionController {
 
     const suggestion_id = insertedIds[0];
 
-    const suggestionGenre = genres.map((genre_id: number) => {
-      return {
-        genre_id,
-        suggestion_id,
-      };
-    });
+    const suggestionGenre = genres
+      .split(",")
+      .map((genre: string) => Number(genre.trim()))
+      .map((genre_id: number) => {
+        return {
+          genre_id,
+          suggestion_id,
+        };
+      });
 
     await trx("suggestion_genres").insert(suggestionGenre);
 
@@ -56,11 +69,19 @@ class SuggestionController {
   }
 
   async delete(req: Request, res: Response) {
-    const { id } = req.body;
+    const { id } = req.params;
 
     await knex("movie_suggestion").where("id", id).delete();
 
     return res.status(204).send();
+  }
+
+  async update(req: Request, res: Response) {
+    const { id } = req.params;
+
+    await knex("movie_suggestion").where("id", id).update("watched", 1);
+
+    return res.status(200).send();
   }
 }
 
